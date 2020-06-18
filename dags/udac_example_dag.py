@@ -13,9 +13,10 @@ from helpers import SqlQueries
 AIRFLOW_AWS_CREDENTIALS_ID = "aws_credentials"
 AIRFLOW_REDSHIFT_CONN_ID = "redshift"
 
-S3_BUCKET="s3://udacity-dend"
-S3_LOGS_KEY="/log_data"
-S3_SONGS_KEY="/song_data"
+S3_BUCKET="udacity-dend"
+S3_LOGS_KEY="log_data"
+S3_SONGS_KEY="song_data"
+LOG_JSONPATH="log_json_path.json"
 
 default_args = {
     'owner': 'udacity',
@@ -42,14 +43,16 @@ sql_path = path.join(path.dirname(path.abspath(__file__)), sql_file_name)
 with open(sql_file_name) as reader:
     sql_file = reader.read()
 
+    target_events_table = "public.staging_events"
     stage_events_to_redshift = StageToRedshiftOperator(
         task_id='Stage_events',
         redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
         aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
-        target_table="sample_table",
+        target_table=target_events_table,
         sql=sql_file,
         s3_bucket=S3_BUCKET,
         s3_key=S3_LOGS_KEY,
+        json_path=LOG_JSONPATH,
         dag=dag,
     )
 

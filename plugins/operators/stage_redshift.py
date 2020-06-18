@@ -18,8 +18,7 @@ class StageToRedshiftOperator(BaseOperator):
         COPY {}
         FROM '{}'
         ACCESS_KEY_ID '{}'
-        IGNOREHEADER {}
-        DELIMITER '{}'
+        SECRET_ACCESS_KEY '{}'
     """
 
     @apply_defaults
@@ -30,6 +29,9 @@ class StageToRedshiftOperator(BaseOperator):
                  sql: str = "",
                  s3_bucket: Optional[str] = None,
                  s3_key: Optional[str] = None,
+                 json_path: Optional[str] = None,
+                 ignore_headers: int = 1,
+                 delimiter: str = ',',
                  *args, **kwargs):
 
         super(StageToRedshiftOperator, self).__init__(*args, **kwargs)
@@ -40,12 +42,41 @@ class StageToRedshiftOperator(BaseOperator):
         self.sql = sql
         self.s3_bucket = s3_bucket
         self.s3_key = s3_key
+        self.json_path = json_path
+        self.ignore_headers = ignore_headers
+        self.delimiter = delimiter
 
     def execute(self, context):
+        print(context)
         aws_hook = AwsHook(self.aws_credentials_id)
-        print(aws_hook)
         credentials = aws_hook.get_credentials()
-        redshift = PostgresHook(postgres_conn_id=self.redshift_conn_id)
 
+        redshift = PostgresHook(postgres_conn_id=self.redshift_conn_id)
         self.log.info("Cleanning table before insert...")
         redshift.run(self.sql)
+
+        self.log.info("Copying data from s3 to redshift...")
+        s3_path = f"s3://{self.s3_bucket}/{self.s3_key}"
+
+        formatted_s3_copy_command = StageToRedshiftOperator.copy_sql.format(
+            self.target_table,
+            s3_path,
+            credentials.access_key,
+            credentials.secret_key,
+        )
+
+        if self.json_path is None:
+            formatted_s3_copy_command += """
+                IGNOREHEADER {}
+                DELIMITER '{}'
+            """.format(self.ignore_headers, self.delimiter,)
+        else:
+            formatted_s3_copy_command += """
+                json '{}'
+            """.format(
+                f"s3://{self.s3_bucket}/{self.json_path}",
+                self.ignore_headers,
+                self.delimiter,)
+
+        self.log.info("Copying from s3 to redshift...")
+        redshift.run(formatted_s3_copy_command)
