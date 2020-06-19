@@ -40,7 +40,7 @@ def stage_s3_to_redshift_dag(
     )
 
     check_data_task = DataQualityOperator(
-        task_id=f"{parent_dag_name}.Verify_Has_Rows",
+        task_id=f"{parent_dag_name}.Data_Quality_Check",
         conn_id=redshift_conn_id,
         aws_credentials_id=aws_credentials_id,
         table=target_table,
