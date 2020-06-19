@@ -7,6 +7,7 @@ from airflow.utils.decorators import apply_defaults
 from airflow.operators.s3_to_redshift_operator import S3Hook
 from airflow.contrib.hooks.aws_hook import AwsHook
 
+
 class StageToRedshiftOperator(BaseOperator):
     """
     Docs
@@ -52,34 +53,32 @@ class StageToRedshiftOperator(BaseOperator):
         credentials = aws_hook.get_credentials()
 
         redshift = PostgresHook(postgres_conn_id=self.redshift_conn_id)
-        self.log.info("Cleanning table before insert...")
+        self.log.info(f"Cleaning table '{self.target_table}' before loading...")
         redshift.run(self.sql)
 
-        self.log.info("Copying data from s3 to redshift...")
-        s3_path = f"s3://{self.s3_bucket}/{self.s3_key}"
+        s3_file_path = f"s3://{self.s3_bucket}/{self.s3_key}"
+        s3_json_path = f"s3://{self.s3_bucket}/{self.json_path}"
 
         formatted_s3_copy_command = StageToRedshiftOperator.copy_sql.format(
             self.target_table,
-            s3_path,
+            s3_file_path,
             credentials.access_key,
             credentials.secret_key,
         )
 
-        if self.json_path is None:
+        if self.s3_key.endswith(".json"):
             formatted_s3_copy_command += """
                 IGNOREHEADER {}
                 DELIMITER '{}'
-            """.format(self.ignore_headers, self.delimiter,)
+            """.format(self.ignore_headers, self.delimiter, )
         else:
-            formatted_s3_copy_command += """
-                json '{}'
-            """.format(
-                f"s3://{self.s3_bucket}/{self.json_path}",
-                self.ignore_headers,
-                self.delimiter,)
+            if self.json_path is None:
+                formatted_s3_copy_command += " json 'auto'"
+            else:
+                formatted_s3_copy_command += """
+                    json '{}'
+                """.format(s3_json_path)
 
-        self.log.info(f"Truncating table {self.target_table}...")
-        redshift.run(f"TRUNCATE TABLE {self.target_table}")
-
-        self.log.info("Copying from s3 to redshift...")
+        self.log.info(f"Copying data from s3 '{s3_file_path}' to redshift "
+                      f"final table '{self.target_table}'...")
         redshift.run(formatted_s3_copy_command)

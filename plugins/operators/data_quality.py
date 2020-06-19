@@ -21,15 +21,17 @@ class DataQualityOperator(BaseOperator):
         self.redshift = PostgresHook(postgres_conn_id=conn_id)
 
     def execute(self, context):
-        self.log.info('DataQualityOperator step')
+        self.log.info(f"Running {self.__class__.__name__}")
+
         formatted_dql = f"SELECT COUNT(*) FROM {self.table}"
+
+        self.log.info(f"Executing data quality check on table '{self.table}'")
         result = self.redshift.get_records(formatted_dql)
 
         if len(result) < 1 or len(result[0]) < 1:
-            raise ValueError("Actual result from validation task does not match expected result")
+            raise ValueError(f"Select statement on table '{self.table}' retrieved no results...")
 
         num_records = result[0][0]
 
         if num_records < 1:
-            raise ValueError(
-                "Actual result from validation task does not match expected result")
+            raise ValueError(f"Table '{self.table}' is empty...")

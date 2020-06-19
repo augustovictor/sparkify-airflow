@@ -17,7 +17,7 @@ def stage_s3_to_redshift_dag(
         json_path: Optional[str] = None,
         ignore_headers: Optional[int] = None,
         delimiter: Optional[str] = None,
-        default_args: Dict[str, Any] = {},
+        default_args: Dict[str, Any] = dict,
         *args,
         **kwargs,
 ):
@@ -36,7 +36,11 @@ def stage_s3_to_redshift_dag(
         s3_bucket=s3_bucket,
         s3_key=s3_key,
         json_path=json_path,
+        ignore_headers=ignore_headers,
+        delimiter=delimiter,
         dag=dag,
+        *args,
+        **kwargs
     )
 
     check_data_task = DataQualityOperator(
