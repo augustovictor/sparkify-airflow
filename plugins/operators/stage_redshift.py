@@ -78,5 +78,8 @@ class StageToRedshiftOperator(BaseOperator):
                 self.ignore_headers,
                 self.delimiter,)
 
+        self.log.info(f"Truncating table {self.target_table}...")
+        redshift.run(f"TRUNCATE TABLE {self.target_table}")
+
         self.log.info("Copying from s3 to redshift...")
         redshift.run(formatted_s3_copy_command)

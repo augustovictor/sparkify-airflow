@@ -39,11 +39,11 @@ start_operator = DummyOperator(task_id='Begin_execution',  dag=dag, catchup=Fals
 
 sql_file_name = 'create_tables.sql'
 sql_path = path.join(path.dirname(path.abspath(__file__)), sql_file_name)
+target_events_table = "public.staging_events"
 
 with open(sql_file_name) as reader:
     sql_file = reader.read()
 
-    target_events_table = "public.staging_events"
     stage_events_to_redshift = StageToRedshiftOperator(
         task_id='Stage_events',
         redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
@@ -55,6 +55,14 @@ with open(sql_file_name) as reader:
         json_path=LOG_JSONPATH,
         dag=dag,
     )
+
+check_data_task = DataQualityOperator(
+    task_id="Verify_Has_Rows",
+    conn_id=AIRFLOW_REDSHIFT_CONN_ID,
+    aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
+    table=target_events_table,
+    dag=dag,
+)
 
 # stage_songs_to_redshift = StageToRedshiftOperator(
 #     task_id='Stage_songs',
@@ -86,16 +94,17 @@ with open(sql_file_name) as reader:
 #     dag=dag
 # )
 
-run_quality_checks = DataQualityOperator(
-    task_id='Run_data_quality_checks',
-    dag=dag
-)
+# run_quality_checks = DataQualityOperator(
+#     task_id='Run_data_quality_checks',
+#     dag=dag
+# )
 
 end_operator = DummyOperator(task_id='Stop_execution',  dag=dag)
 
 start_operator >> stage_events_to_redshift
 
-stage_events_to_redshift >> run_quality_checks
+stage_events_to_redshift >> check_data_task
+check_data_task >> end_operator
 # start_operator >> stage_songs_to_redshift
 #
 # stage_events_to_redshift >> load_songplays_table
@@ -111,4 +120,4 @@ stage_events_to_redshift >> run_quality_checks
 # load_artist_dimension_table >> run_quality_checks
 # load_time_dimension_table >> run_quality_checks
 
-run_quality_checks >> end_operator
+# run_quality_checks >> end_operator
