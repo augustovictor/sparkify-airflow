@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 from os import path
+
+from airflow.operators.subdag_operator import SubDagOperator
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 from airflow import DAG
@@ -8,6 +10,7 @@ from airflow.models import Variable
 from operators import (StageToRedshiftOperator, LoadFactOperator,
                                 LoadDimensionOperator, DataQualityOperator)
 from helpers import SqlQueries
+from stage_s3_to_redshift_and_validate_subdag import stage_s3_to_redshift_dag
 
 log = LoggingMixin().log
 # AWS_KEY = os.environ.get('AWS_KEY')
@@ -31,11 +34,12 @@ default_args = {
     # 'email_on_retry': False,
 }
 
-dag = DAG('etl_dw',
+main_task_id = 'etl_dw'
+dag = DAG(dag_id=main_task_id,
           default_args=default_args,
           description='Load and transform data in Redshift with Airflow',
           schedule_interval='@daily'
-        )
+          )
 
 start_operator = DummyOperator(task_id='Begin_execution',  dag=dag, catchup=False)
 
@@ -47,30 +51,47 @@ sql_content = None
 
 try:
     with open(sql_file_name) as reader:
-        sql_file = reader.read()
+        sql_content = reader.read()
 
 except Exception as err:
     log.error(f"Failure when reading file {sql_path}")
 
-stage_events_to_redshift = StageToRedshiftOperator(
-    task_id='Stage_events',
-    redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
-    aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
-    target_table=target_events_table,
-    sql=sql_file,
-    s3_bucket=S3_BUCKET,
-    s3_key=S3_LOGS_KEY,
-    json_path=LOG_JSONPATH,
+stage_s3_to_redshift_and_validate_task = SubDagOperator(
+    task_id="Stage_to_S3_And_Validate",
     dag=dag,
+    subdag=stage_s3_to_redshift_dag(
+        parent_dag_name=main_task_id,
+        task_id="Stage_to_S3_And_Validate",
+        redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
+        aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
+        target_table=target_events_table,
+        sql=sql_content,
+        s3_bucket=S3_BUCKET,
+        s3_key=S3_LOGS_KEY,
+        json_path=LOG_JSONPATH,
+        default_args=default_args
+    )
 )
 
-check_data_task = DataQualityOperator(
-    task_id="Verify_Has_Rows",
-    conn_id=AIRFLOW_REDSHIFT_CONN_ID,
-    aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
-    table=target_events_table,
-    dag=dag,
-)
+# stage_events_to_redshift = StageToRedshiftOperator(
+#     task_id='Stage_events',
+#     redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
+#     aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
+#     target_table=target_events_table,
+#     sql=sql_content,
+#     s3_bucket=S3_BUCKET,
+#     s3_key=S3_LOGS_KEY,
+#     json_path=LOG_JSONPATH,
+#     dag=dag,
+# )
+#
+# check_data_task = DataQualityOperator(
+#     task_id="Verify_Has_Rows",
+#     conn_id=AIRFLOW_REDSHIFT_CONN_ID,
+#     aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
+#     table=target_events_table,
+#     dag=dag,
+# )
 
 # stage_songs_to_redshift = StageToRedshiftOperator(
 #     task_id='Stage_songs',
@@ -109,10 +130,9 @@ check_data_task = DataQualityOperator(
 
 end_operator = DummyOperator(task_id='Stop_execution',  dag=dag)
 
-start_operator >> stage_events_to_redshift
+start_operator >> stage_s3_to_redshift_and_validate_task
+stage_s3_to_redshift_and_validate_task >> end_operator
 
-stage_events_to_redshift >> check_data_task
-check_data_task >> end_operator
 # start_operator >> stage_songs_to_redshift
 #
 # stage_events_to_redshift >> load_songplays_table
