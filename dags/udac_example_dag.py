@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from os import path
+from airflow.utils.log.logging_mixin import LoggingMixin
 
 from airflow import DAG
 from airflow.operators.dummy_operator import DummyOperator
@@ -8,6 +9,7 @@ from operators import (StageToRedshiftOperator, LoadFactOperator,
                                 LoadDimensionOperator, DataQualityOperator)
 from helpers import SqlQueries
 
+log = LoggingMixin().log
 # AWS_KEY = os.environ.get('AWS_KEY')
 # AWS_SECRET = os.environ.get('AWS_SECRET')
 AIRFLOW_AWS_CREDENTIALS_ID = "aws_credentials"
@@ -41,20 +43,26 @@ sql_file_name = 'create_tables.sql'
 sql_path = path.join(path.dirname(path.abspath(__file__)), sql_file_name)
 target_events_table = "public.staging_events"
 
-with open(sql_file_name) as reader:
-    sql_file = reader.read()
+sql_content = None
 
-    stage_events_to_redshift = StageToRedshiftOperator(
-        task_id='Stage_events',
-        redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
-        aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
-        target_table=target_events_table,
-        sql=sql_file,
-        s3_bucket=S3_BUCKET,
-        s3_key=S3_LOGS_KEY,
-        json_path=LOG_JSONPATH,
-        dag=dag,
-    )
+try:
+    with open(sql_file_name) as reader:
+        sql_file = reader.read()
+
+except Exception as err:
+    log.error(f"Failure when reading file {sql_path}")
+
+stage_events_to_redshift = StageToRedshiftOperator(
+    task_id='Stage_events',
+    redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
+    aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
+    target_table=target_events_table,
+    sql=sql_file,
+    s3_bucket=S3_BUCKET,
+    s3_key=S3_LOGS_KEY,
+    json_path=LOG_JSONPATH,
+    dag=dag,
+)
 
 check_data_task = DataQualityOperator(
     task_id="Verify_Has_Rows",
