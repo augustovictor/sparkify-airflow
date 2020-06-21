@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any
 from airflow import DAG
 
 from operators import StageToRedshiftOperator, DataQualityOperator, \
-    DataQualityValidation
+    DataQualityValidator
 
 
 def stage_s3_to_redshift_dag(
@@ -44,7 +44,7 @@ def stage_s3_to_redshift_dag(
         **kwargs
     )
 
-    validation_songplays = DataQualityValidation(
+    validation_songplays = DataQualityValidator(
         sql_statement=f"SELECT COUNT(*) FROM {target_table}",
         result_to_assert=0,
         should_assert_for_equality=False,

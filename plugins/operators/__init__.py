@@ -3,7 +3,7 @@ from operators.load_fact import LoadFactOperator
 from operators.load_dimension import LoadDimensionOperator
 from operators.data_quality import DataQualityOperator
 from operators.ddl_redshift import DdlRedshiftOperator
-from operators.data_quality_validation import DataQualityValidation
+from operators.data_quality_validation import DataQualityValidator
 
 __all__ = [
     'StageToRedshiftOperator',
@@ -11,5 +11,5 @@ __all__ = [
     'LoadDimensionOperator',
     'DataQualityOperator',
     'DdlRedshiftOperator',
-    'DataQualityValidation',
+    'DataQualityValidator',
 ]

@@ -4,7 +4,7 @@ from airflow.hooks.postgres_hook import PostgresHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 
-from operators.data_quality_validation import DataQualityValidation
+from operators.data_quality_validation import DataQualityValidator
 
 
 class DataQualityOperator(BaseOperator):
@@ -13,7 +13,7 @@ class DataQualityOperator(BaseOperator):
     @apply_defaults
     def __init__(self,
                  redshift_conn_id: str,
-                 data_quality_validations: List[DataQualityValidation],
+                 data_quality_validations: List[DataQualityValidator],
                  *args, **kwargs):
 
         super(DataQualityOperator, self).__init__(*args, **kwargs)

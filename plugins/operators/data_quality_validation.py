@@ -1,7 +1,7 @@
 from typing import Any
 
 
-class DataQualityValidation:
+class DataQualityValidator:
     def __init__(self,
                  sql_statement: str,
                  result_to_assert: Any,
