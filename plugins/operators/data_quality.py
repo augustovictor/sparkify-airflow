@@ -1,37 +1,43 @@
+from typing import List
+
 from airflow.hooks.postgres_hook import PostgresHook
-from airflow.contrib.hooks.aws_hook import AwsHook
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 
-class DataQualityOperator(BaseOperator):
+from operators.data_quality_validation import DataQualityValidation
 
+
+class DataQualityOperator(BaseOperator):
     ui_color = '#89DA59'
 
     @apply_defaults
     def __init__(self,
-                 conn_id: str,
-                 aws_credentials_id: str,
-                 table: str,
+                 redshift_conn_id: str,
+                 data_quality_validations: List[DataQualityValidation],
                  *args, **kwargs):
 
         super(DataQualityOperator, self).__init__(*args, **kwargs)
-        self.table = table
 
-        self.aws_credentials = AwsHook(aws_conn_id=aws_credentials_id).get_credentials()
-        self.redshift = PostgresHook(postgres_conn_id=conn_id)
+        self.data_quality_validations = data_quality_validations
+        self.redshift = PostgresHook(postgres_conn_id=redshift_conn_id)
 
     def execute(self, context):
         self.log.info(f"Running {self.__class__.__name__}")
 
-        formatted_dql = f"SELECT COUNT(*) FROM {self.table}"
+        for validation in self.data_quality_validations:
+            self.log.info(
+                f"Executing data quality with statement: '{validation.sql_statement}'")
 
-        self.log.info(f"Executing data quality check on table '{self.table}'")
-        result = self.redshift.get_records(formatted_dql)
+            response = self.redshift.get_records(validation.sql_statement)
 
-        if len(result) < 1 or len(result[0]) < 1:
-            raise ValueError(f"Select statement on table '{self.table}' retrieved no results...")
+            if len(response) < 1 or len(response[0]) < 1:
+                error_message = f"Select statement '{validation.sql_statement}' got empty response..."
+                self.log.error(error_message)
+                raise ValueError(error_message)
 
-        num_records = result[0][0]
+            actual_result = response[0][0]
 
-        if num_records < 1:
-            raise ValueError(f"Table '{self.table}' is empty...")
+            if not validation.is_valid_with(actual_result=actual_result):
+                error_message = f"Statement '{validation.sql_statement}' response '{actual_result}' does not match expected result '{validation.should_assert_for_equality} {validation.result_to_assert}'..."
+                self.log.error(error_message)
+                raise ValueError(error_message)

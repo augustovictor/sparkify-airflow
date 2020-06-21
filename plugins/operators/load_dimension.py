@@ -13,7 +13,7 @@ class LoadDimensionOperator(BaseOperator):
     default_schema = "public"
 
     inser_sql = """
-        INSERT INTO '{}.{}' ({})
+        INSERT INTO {}.{} ({})
     """
 
     @apply_defaults

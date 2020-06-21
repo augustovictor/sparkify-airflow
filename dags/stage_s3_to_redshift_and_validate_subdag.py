@@ -2,7 +2,8 @@ from typing import Optional, Dict, Any
 
 from airflow import DAG
 
-from operators import StageToRedshiftOperator, DataQualityOperator
+from operators import StageToRedshiftOperator, DataQualityOperator, \
+    DataQualityValidation
 
 
 def stage_s3_to_redshift_dag(
@@ -43,11 +44,16 @@ def stage_s3_to_redshift_dag(
         **kwargs
     )
 
+    validation_songplays = DataQualityValidation(
+        sql_statement=f"SELECT COUNT(*) FROM {target_table}",
+        result_to_assert=0,
+        should_assert_for_equality=False,
+    )
+
     check_data_task = DataQualityOperator(
         task_id=f"{parent_dag_name}.Data_Quality_Check",
-        conn_id=redshift_conn_id,
-        aws_credentials_id=aws_credentials_id,
-        table=target_table,
+        redshift_conn_id=redshift_conn_id,
+        data_quality_validations=[validation_songplays],
         dag=dag,
     )
 

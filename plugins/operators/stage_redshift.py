@@ -54,7 +54,8 @@ class StageToRedshiftOperator(BaseOperator):
 
         redshift = PostgresHook(postgres_conn_id=self.redshift_conn_id)
         self.log.info(f"Cleaning table '{self.target_table}' before loading...")
-        redshift.run(self.sql)
+        # redshift.run(self.sql) # TODO: Remove this
+        redshift.run(f"TRUNCATE TABLE {self.target_table}")
 
         s3_file_path = f"s3://{self.s3_bucket}/{self.s3_key}"
         s3_json_path = f"s3://{self.s3_bucket}/{self.json_path}"
