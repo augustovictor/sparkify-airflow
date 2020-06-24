@@ -21,6 +21,7 @@ class DdlRedshiftOperator(BaseOperator):
 
     def execute(self, context):
         self.log.info(f"Running {self.__class__.__name__}")
+        self.log.info(context)
 
         self.log.info(f"Executing DDL statements...")
         self.conn.run(self.sql)

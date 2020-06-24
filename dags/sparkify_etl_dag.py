@@ -27,9 +27,10 @@ LOG_JSONPATH="log_json_path.json"
 default_args = {
     'owner': 'Victor Costa',
     'depends_on_past': False,
-    'start_date': datetime(2020, 6, 16),
-    # 'retries': 0,
-    # 'retry_delay': timedelta(minutes=5),
+    'start_date': datetime(2018, 1, 11),
+    'retries': 3,
+    'retry_delay': timedelta(minutes=5),
+    'email_on_retry': False,
 }
 
 main_task_id = 'sparkify_etl_dw'
@@ -38,7 +39,7 @@ dag = DAG(dag_id=main_task_id,
           default_args=default_args,
           description='Load and transform data in Redshift with Airflow',
           schedule_interval='@hourly',
-          catchup=False,
+          catchup=True,
           max_active_runs=1
           )
 
@@ -57,6 +58,8 @@ except Exception as err:
     log.error(f"Failure when reading file {sql_path}")
 
 # Tables
+staging_events_table = "staging_events"
+staging_songs_table = "staging_songs"
 target_events_table = "staging_events"
 target_songs_table = "staging_songs"
 facts_songplays_table_name = "songplays"
@@ -70,6 +73,18 @@ stage_events_task_id = "Stage_Events_to_Redshift_And_Validate"
 stage_songs_task_id = "Stage_Songs_to_Redshift_And_Validate"
 
 # Validations
+validator_stage_events = DataQualityValidator(
+    sql_statement=f"SELECT COUNT(*) FROM {staging_events_table}",
+    result_to_assert=0,
+    should_assert_for_equality=False,
+)
+
+validator_stage_songs = DataQualityValidator(
+    sql_statement=f"SELECT COUNT(*) FROM {staging_songs_table}",
+    result_to_assert=0,
+    should_assert_for_equality=False,
+)
+
 validator_events = DataQualityValidator(
     sql_statement=f"SELECT COUNT(*) FROM {target_events_table}",
     result_to_assert=0,
@@ -123,12 +138,11 @@ stage_events_s3_to_redshift_and_validate_task = SubDagOperator(
         redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
         aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
         target_table=target_events_table,
-        sql=sql_content,
         s3_bucket=S3_BUCKET,
         s3_key=S3_LOGS_KEY,
         json_path=LOG_JSONPATH,
-        default_args=default_args
-    )
+        default_args=default_args,
+    ),
 )
 
 stage_songs_s3_to_redshift_and_validate_task = SubDagOperator(
@@ -140,7 +154,6 @@ stage_songs_s3_to_redshift_and_validate_task = SubDagOperator(
         redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
         aws_credentials_id=AIRFLOW_AWS_CREDENTIALS_ID,
         target_table=target_songs_table,
-        sql=sql_content,
         s3_bucket=S3_BUCKET,
         s3_key=S3_SONGS_KEY,
         default_args=default_args
@@ -191,6 +204,8 @@ run_quality_checks = DataQualityOperator(
     task_id='Run_data_quality_checks',
     redshift_conn_id=AIRFLOW_REDSHIFT_CONN_ID,
     data_quality_validations=[
+        validator_stage_events,
+        validator_stage_songs,
         validator_songplays,
         validator_songs,
         validator_artists,
@@ -206,20 +221,16 @@ end_operator = DummyOperator(task_id='Stop_execution',  dag=dag)
 # DAG dependency setup
 start_operator >> db_setup_task
 
-db_setup_task >> stage_events_s3_to_redshift_and_validate_task
-db_setup_task >> stage_songs_s3_to_redshift_and_validate_task
+db_setup_task >> [
+    stage_events_s3_to_redshift_and_validate_task,
+    stage_songs_s3_to_redshift_and_validate_task,
+] >> load_songplays_table_task
 
-stage_events_s3_to_redshift_and_validate_task >> load_songplays_table_task
-stage_songs_s3_to_redshift_and_validate_task >> load_songplays_table_task
-
-load_songplays_table_task >> load_user_dimension_table
-load_songplays_table_task >> load_song_dimension_table
-load_songplays_table_task >> load_artist_dimension_table
-load_songplays_table_task >> load_time_dimension_table
-
-load_user_dimension_table >> run_quality_checks
-load_song_dimension_table >> run_quality_checks
-load_artist_dimension_table >> run_quality_checks
-load_time_dimension_table >> run_quality_checks
+load_songplays_table_task >> [
+    load_user_dimension_table,
+    load_song_dimension_table,
+    load_artist_dimension_table,
+    load_time_dimension_table,
+] >> run_quality_checks
 
 run_quality_checks >> end_operator
